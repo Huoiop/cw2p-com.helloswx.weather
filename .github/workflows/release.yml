@@ -6,9 +6,6 @@ on:
       - "v*.*.*"
   workflow_dispatch:
     inputs:
-      publish:
-        type: boolean
-        default: true
       version:
         description: "Release version without the v prefix (for example: 1.0.0)"
         required: true
@@ -71,13 +68,9 @@ jobs:
           # Build .zip format
           cw-plugin-pack --format zip
 
-      - name: Publish to plugin registry
-        # Tag 推送时始终发布；手动触发时由 publish 开关控制
-        if: github.event_name != 'workflow_dispatch' || inputs.publish
-        env:
-          CWPT_TOKEN: ${{ secrets.CWPT_TOKEN }}
-        run: |
-          cw-plugin-publish
+      # 本仓库是修改版，只发 GitHub Release，不发布到插件广场。
+      # 如需恢复：加回 `cw-plugin-publish` 步骤并配置 CWPT_TOKEN secret，
+      # 注意插件 ID com.helloswx.weather 与原版相同，发布会撞上原版的广场条目。
 
       - name: Create and push version tag
         if: github.event_name == 'workflow_dispatch'
