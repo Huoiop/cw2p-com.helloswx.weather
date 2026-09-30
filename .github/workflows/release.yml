@@ -34,20 +34,35 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-
-      - name: Install git-cliff
+      - name: Resolve version
+        id: version
+        shell: bash
         run: |
-          cargo install git-cliff
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install dependencies
         run: |
           pip install -e .
+
+      - name: Sync version into cwplugin.json
+        # cwplugin.json 的 version 才是发布到广场、写进包内的版本，
+        # 这里按 tag 同步，避免仓库里的版本号落后于 tag。仅作用于打包产物，不提交回仓库。
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path("cwplugin.json")
+          d = json.loads(p.read_text(encoding="utf-8"))
+          d["version"] = os.environ["VERSION"]
+          p.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print("cwplugin.json version ->", d["version"])
+          PY
 
       - name: Build plugin packages
         run: |
@@ -57,26 +72,18 @@ jobs:
           cw-plugin-pack --format zip
 
       - name: Publish to plugin registry
+        # Tag 推送时始终发布；手动触发时由 publish 开关控制
+        if: github.event_name != 'workflow_dispatch' || inputs.publish
         env:
           CWPT_TOKEN: ${{ secrets.CWPT_TOKEN }}
         run: |
           cw-plugin-publish
 
-      - name: Get version from tag
-        id: get_version
-        shell: bash
-        run: |
-          if [[ ${{ github.event_name }} == 'workflow_dispatch' ]]; then
-            echo "VERSION=${{ inputs.version }}" >> $GITHUB_ENV
-          else
-            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
-          fi
-
       - name: Create and push version tag
         if: github.event_name == 'workflow_dispatch'
-        env:
-          TAG: v${{ env.VERSION }}
         shell: bash
+        env:
+          TAG: v${{ steps.version.outputs.value }}
         run: |
           if git rev-parse -q --verify "refs/tags/${TAG}" > /dev/null; then
             echo "Tag ${TAG} already exists."
@@ -87,25 +94,22 @@ jobs:
           git tag --annotate "${TAG}" --message "Release ${TAG}"
           git push origin "${TAG}"
 
-      - name: Generate changelog with git-cliff
-        id: generate_changelog
-        shell: bash
-        run: |
-          git-cliff --config .git-cliff.toml --tag v${{ env.VERSION }} > CHANGELOG.md
-          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-          cat CHANGELOG.md >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+      - name: Generate changelog
+        id: changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: .git-cliff.toml
+          args: --tag v${{ steps.version.outputs.value }}
 
       - name: Create Release
-        id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.VERSION }}
-          name: Release v${{ env.VERSION }}
+          tag_name: v${{ steps.version.outputs.value }}
+          name: Release v${{ steps.version.outputs.value }}
           draft: false
           prerelease: false
           files: |
             *.cwplugin
             *.zip
-          body: ${{ env.CHANGELOG }}
+          body: ${{ steps.changelog.outputs.content }}
           generate_release_notes: false
