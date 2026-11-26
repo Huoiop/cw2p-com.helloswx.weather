@@ -49,7 +49,7 @@ Widget {
         var value = settings && settings.notice_seconds ? Number(settings.notice_seconds) : 30
         if (isNaN(value))
             value = 30
-        return Math.max(5, Math.min(120, Math.round(value)))
+        return Math.max(5, Math.min(180, Math.round(value)))
     }
     readonly property var outdoorNoticeTimes: parseNoticeTimes(settings && settings.outdoor_notice_times)
     readonly property var tomorrowNoticeTimes: parseNoticeTimes(settings && settings.tomorrow_notice_times)

@@ -298,7 +298,10 @@ PluginPage {
                 from: 5
                 to: 720
                 stepSize: 5
-                onValueModified: if (backend) backend.setRefreshMinutes(value)
+                // RinUI 的上下箭头先发 valueModified 再改 value，推迟一轮再读最终值
+                onValueModified: Qt.callLater(function() {
+                    if (backend) backend.setRefreshMinutes(value)
+                })
             }
         }
 

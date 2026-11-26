@@ -198,7 +198,10 @@ SettingsLayout {
             from: 4
             to: 120
             stepSize: 1
-            onValueModified: settings.main_seconds = value
+            // RinUI 的上下箭头先发 valueModified 再改 value，推迟一轮再读最终值
+            onValueModified: Qt.callLater(function() {
+                if (settings) settings.main_seconds = value
+            })
             Component.onCompleted: value = settings.main_seconds || 12
         }
     }
@@ -215,7 +218,9 @@ SettingsLayout {
             from: 2
             to: 60
             stepSize: 1
-            onValueModified: settings.detail_seconds = value
+            onValueModified: Qt.callLater(function() {
+                if (settings) settings.detail_seconds = value
+            })
             Component.onCompleted: value = settings.detail_seconds || 6
         }
     }
@@ -258,16 +263,20 @@ SettingsLayout {
         Layout.fillWidth: true
         icon.name: "ic_fluent_timer_20_regular"
         title: qsTr("提醒显示时长")
-        description: qsTr("每条到点提醒持续显示的秒数，默认 30 秒")
+        description: qsTr("每条到点提醒持续显示的秒数（5~180），默认 30 秒")
 
         SpinBox {
             objectName: "noticeSecondsBox"
             Layout.preferredWidth: 150
             from: 5
-            to: 120
+            to: 180
             stepSize: 5
-            onValueModified: settings.notice_seconds = value
-            Component.onCompleted: value = settings.notice_seconds || 30
+            // RinUI 的上下箭头先发 valueModified 再改 value，直接写入会把
+            // “上一格”存进配置；推迟到下一轮事件循环再读最终值。
+            onValueModified: Qt.callLater(function() {
+                if (settings) settings.notice_seconds = value
+            })
+            Component.onCompleted: value = settings && settings.notice_seconds ? settings.notice_seconds : 30
         }
     }
 }
