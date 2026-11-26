@@ -1,13 +1,15 @@
 """腾讯位置服务天气。需要 API Key，按城市 adcode 取数。"""
 
-from typing import Any, Dict, List
+from typing import Any
 
 from .. import codes
 from ..http import RequestError, get_json
 from ..models import Location, Snapshot
 from .base import ProviderError, WeatherProvider, register
 
-_ENDPOINT = "https://apis.map.qq.com/ws/weather/v1/?key={key}&adcode={adcode}&type={type}"
+_ENDPOINT = (
+    "https://apis.map.qq.com/ws/weather/v1/?key={key}&adcode={adcode}&type={type}"
+)
 _STATUS_FILE = "qq_weather_status.json"
 
 
@@ -27,7 +29,9 @@ class QQProvider(WeatherProvider):
             raise ProviderError("未设置城市")
 
         payload = self._request(location.code, "now")
-        realtime: List[Dict[str, Any]] = (payload.get("result") or {}).get("realtime") or []
+        realtime: list[dict[str, Any]] = (payload.get("result") or {}).get(
+            "realtime"
+        ) or []
         if not realtime:
             raise ProviderError("未返回实况数据")
 
@@ -46,7 +50,7 @@ class QQProvider(WeatherProvider):
         self._apply_forecast(snapshot, location.code)
         return snapshot
 
-    def _request(self, adcode: str, kind: str) -> Dict[str, Any]:
+    def _request(self, adcode: str, kind: str) -> dict[str, Any]:
         url = _ENDPOINT.format(key=self.api_key, adcode=adcode, type=kind)
         try:
             payload = get_json(url, timeout=10.0)
@@ -67,7 +71,9 @@ class QQProvider(WeatherProvider):
         except ProviderError:
             return
 
-        forecast: List[Dict[str, Any]] = (payload.get("result") or {}).get("forecast") or []
+        forecast: list[dict[str, Any]] = (payload.get("result") or {}).get(
+            "forecast"
+        ) or []
         if not forecast:
             return
         infos = forecast[0].get("infos") or []

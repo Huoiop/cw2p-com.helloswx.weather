@@ -11,9 +11,9 @@ Meteocons 的 code-red / code-yellow 等预警图标，三角形本体正是靠 
 """
 
 import json
+import os
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 from rlottie_python import LottieAnimation
 
@@ -23,13 +23,18 @@ PROBE_FRAMES = (0, 90, 180, 270)
 
 def visible_area(path: str, frame: int) -> int:
     animation = LottieAnimation.from_file(path)
-    alpha = animation.render_pillow_frame(frame_num=frame, width=128, height=128).convert("RGBA").getchannel("A")
+    alpha = (
+        animation.render_pillow_frame(frame_num=frame, width=128, height=128)
+        .convert("RGBA")
+        .getchannel("A")
+    )
     box = alpha.getbbox()
     return (box[2] - box[0]) * (box[3] - box[1]) if box else 0
 
 
 def measure(data: dict) -> list:
     handle, name = tempfile.mkstemp(suffix=".json")
+    os.close(handle)
     Path(name).write_text(json.dumps(data), encoding="utf-8")
     try:
         return [visible_area(name, frame) for frame in PROBE_FRAMES]
@@ -37,13 +42,17 @@ def measure(data: dict) -> list:
         Path(name).unlink(missing_ok=True)
 
 
-def flatten(data: dict) -> Optional[dict]:
+def flatten(data: dict) -> dict | None:
     """把所有带关键帧的图层缩放拍平；没有可拍平的就返回 None。"""
     patched = json.loads(json.dumps(data))
     changed = False
     for layer in patched.get("layers", []):
         scale = layer.get("ks", {}).get("s")
-        if isinstance(scale, dict) and scale.get("a") == 1 and isinstance(scale.get("k"), list):
+        if (
+            isinstance(scale, dict)
+            and scale.get("a") == 1
+            and isinstance(scale.get("k"), list)
+        ):
             first = scale["k"][0].get("s")
             if first:
                 layer["ks"]["s"] = {"a": 0, "k": first}
@@ -67,7 +76,9 @@ def main() -> None:
             continue
         after = measure(patched)
         if min(after[1:]) > min(before[1:]) * 1.5:
-            path.write_text(json.dumps(patched, separators=(",", ":")), encoding="utf-8")
+            path.write_text(
+                json.dumps(patched, separators=(",", ":")), encoding="utf-8"
+            )
             fixed.append(path.stem)
             print(f"  修复 {path.stem:16s} 可见面积 {before} -> {after}")
         else:

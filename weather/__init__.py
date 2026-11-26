@@ -7,4 +7,4 @@ PLUGIN_ROOT = PACKAGE_ROOT.parent
 DATA_DIR = PLUGIN_ROOT / "data"
 LOTTIE_DIR = PLUGIN_ROOT / "assets" / "lottie"
 
-__all__ = ["PACKAGE_ROOT", "PLUGIN_ROOT", "DATA_DIR", "LOTTIE_DIR"]
+__all__ = ["DATA_DIR", "LOTTIE_DIR", "PACKAGE_ROOT", "PLUGIN_ROOT"]

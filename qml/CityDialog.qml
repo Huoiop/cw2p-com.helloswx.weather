@@ -3,6 +3,15 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import RinUI
 
+/*!
+    添加城市对话框。
+
+    城市数据来自后端的 sqlite 城市库（每个库两千多条），所以 provinces() /
+    citiesIn() / searchCities() 都是异步的：这里只负责发请求，结果分别从
+    provincesLoaded / cityListLoaded / citiesFound 回来。过滤也在后端做
+    （汉字 / 全拼 / 首字母都行），列表拿到什么就显示什么，不再在前端过滤一遍
+    两千多条。
+*/
 Dialog {
     id: root
 
@@ -15,36 +24,18 @@ Dialog {
 
     readonly property bool coordinatesSupported: info?.supportsCoordinates ?? false
     readonly property bool hasLocalCityList: info?.hasCityList ?? false
-    
+
     property bool useCoordinateInput: false
     property var currentSelection: null
     property var availableCities: []
-    property bool searchInProgress: false
+    property bool provincesLoading: false
+    property bool listLoading: false
     property string searchText: ""
 
-    // 计算属性：在 availableCities 基础上同时应用省份筛选和文字过滤
-    property var filteredCities: {
-        let cities = root.availableCities
-
-        // 省份过滤
-        if (root.hasLocalCityList && provinceSelector.currentIndex > 0) {
-            const pid = filterProvinceList.get(provinceSelector.currentIndex).id
-            cities = cities.filter(c => c.province_id === pid)
-        }
-
-        // 本地列表：支持汉字、全拼、首字母缩写三种匹配
-        if (root.hasLocalCityList && root.searchText.trim() !== "") {
-            const q = root.searchText.trim()
-            const ql = q.toLowerCase()
-            cities = cities.filter(c =>
-                (c.name       && c.name.indexOf(q)         >= 0) ||
-                (c.pinyin     && c.pinyin.indexOf(ql)      >= 0) ||
-                (c.pinyin_abbr && c.pinyin_abbr.indexOf(ql) >= 0)
-            )
-        }
-
-        return cities
-    }
+    // 当前正在等的后端请求：迟到的响应直接丢掉
+    property int pendingProvinceRequest: -2
+    property string pendingListRequest: ""
+    property string pendingSearchTerm: ""
 
     ListModel { id: filterProvinceList }
 
@@ -52,7 +43,8 @@ Dialog {
 
     function initialize() {
         resetInputs()
-        setupProvinces()
+        requestProvinces()
+        requestCities(-1)
     }
 
     // 不能叫 reset()——Dialog 自带同名 signal，会变成非法重写
@@ -69,7 +61,11 @@ Dialog {
 
         currentSelection = null
         availableCities = []
-        searchInProgress = false
+        provincesLoading = false
+        listLoading = false
+        pendingProvinceRequest = -2
+        pendingListRequest = ""
+        pendingSearchTerm = ""
         // 先停掉防抖，否则清空 searchBox 触发的那次 executeSearch 会在 280ms 后
         // 把用户刚点的城市清掉
         searchDebounceTimer.stop()
@@ -79,62 +75,81 @@ Dialog {
         longitudeInput.text = info?.longitude ? String(info.longitude) : ""
     }
 
-    function setupProvinces() {
-        filterProvinceList.clear()
-        filterProvinceList.append({ displayName: qsTr("全部"), id: -1 })
-
-        if (hasLocalCityList && backend) {
-            const provinces = backend.provinces()
-            for (let i = 0; i < provinces.length; i++) {
-                filterProvinceList.append({ displayName: provinces[i], id: i })
-            }
-            provinceSelector.currentIndex = 0
-            // 默认"全部"：加载所有城市
-            availableCities = backend.citiesIn(-1)
-        } else if (backend) {
-            // 坐标型数据源也内置直辖市和省会，空搜索时直接展示。
-            availableCities = backend.citiesIn(-1)
+    /*! 后端命中缓存时会同步返回，命中就不用等后台线程 */
+    function requestProvinces() {
+        if (!backend) return
+        pendingProvinceRequest = -1
+        const cached = backend.provinces()
+        if (cached && cached.length > 0) {
+            applyProvinces(cached)
+            return
         }
+        provincesLoading = true
     }
 
-    function fetchCitiesForProvince(provinceId) {
-        if (!backend || !hasLocalCityList) return
+    function applyProvinces(provinces) {
+        pendingProvinceRequest = -2
+        provincesLoading = false
+        filterProvinceList.clear()
+        filterProvinceList.append({ displayName: qsTr("热门城市"), id: -1 })
+        for (let i = 0; i < provinces.length; i++) {
+            filterProvinceList.append({ displayName: provinces[i], id: i })
+        }
+        provinceSelector.currentIndex = 0
+    }
 
-        // provinceId < 0 表示"全部"
-        availableCities = backend.citiesIn(provinceId)
+    function requestCities(provinceId) {
+        if (!backend) return
+        // -1 是热门城市列表，它同时也是「全局搜索」的哨兵值
+        pendingListRequest = String(provinceId)
+        pendingSearchTerm = ""
         currentSelection = null
         cityListView.currentIndex = -1
+        const cached = backend.citiesIn(provinceId)
+        if (cached && cached.length > 0) {
+            applyCities(cached)
+            return
+        }
+        availableCities = []
+        listLoading = true
+    }
+
+    function applyCities(cities) {
+        availableCities = cities || []
+        listLoading = false
     }
 
     function executeSearch() {
         if (!backend) return
 
-        // 本地列表：文字过滤由 filteredCities 计算属性实时处理，无需后端调用
-        if (hasLocalCityList) return
-
         const query = searchBox.text.trim()
 
         if (query === "") {
-            searchInProgress = false
-            availableCities = backend.citiesIn(-1)
+            requestCities(provinceSelector.currentIndex > 0
+                          ? filterProvinceList.get(provinceSelector.currentIndex).id
+                          : -1)
             return
         }
 
-        searchInProgress = true
-        backend.searchCities(query)
+        const provinceId = provinceSelector.currentIndex > 0
+            ? filterProvinceList.get(provinceSelector.currentIndex).id
+            : -1
+        pendingListRequest = ""
+        pendingSearchTerm = query
+        currentSelection = null
+        cityListView.currentIndex = -1
+        listLoading = true
+        backend.searchCities(query, provinceId)
     }
 
     function getDisplayMessage() {
-        if (searchInProgress) {
-            return qsTr("正在搜索…")
+        if (listLoading) {
+            return qsTr("正在加载…")
         }
 
-        const count = root.filteredCities.length
+        const count = root.availableCities.length
         if (count === 0) {
-            if (!hasLocalCityList && root.searchText.trim() === "") {
-                return qsTr("暂无推荐城市")
-            }
-            return qsTr("没有匹配的城市")
+            return root.searchText.trim() === "" ? qsTr("没有可添加的城市") : qsTr("没有匹配的城市")
         }
 
         return qsTr("共 %1 个结果").arg(count)
@@ -153,15 +168,26 @@ Dialog {
         target: root.backend
         enabled: root.backend !== null && root.backend !== undefined
 
-        function onCitiesFound(query, results) {
+        function onProvincesLoaded(providerId, provinces) {
+            if (!root.backend || providerId !== root.backend.provider) return
+            if (root.pendingProvinceRequest === -2) return
+            root.applyProvinces(provinces || [])
+        }
+
+        function onCityListLoaded(providerId, provinceIndex, cities) {
+            if (!root.backend || providerId !== root.backend.provider) return
+            if (String(provinceIndex) !== root.pendingListRequest) return
+            root.pendingListRequest = ""
+            root.applyCities(cities)
+        }
+
+        function onCitiesFound(term, provinceIndex, results) {
             if (!root.backend) return
             // 只认最后一次输入的结果，忽略迟到的旧请求
-            if (query !== searchBox.text.trim()) return
-
-            root.searchInProgress = false
-            root.availableCities = results ?? []
-            root.currentSelection = null
-            cityListView.currentIndex = -1
+            if (term !== root.pendingSearchTerm) return
+            root.pendingSearchTerm = ""
+            root.listLoading = false
+            root.applyCities(results)
         }
     }
 
@@ -218,10 +244,7 @@ Dialog {
                     model: filterProvinceList
                     textRole: "displayName"
                     onActivated: {
-                        root.currentSelection = null
-                        cityListView.currentIndex = -1
-                        // filteredCities 会自动按新省份过滤，无需手动加载
-                        // 但 availableCities 仍需是"全部"，以便文字过滤能跨省搜索
+                        root.executeSearch()
                     }
                 }
 
@@ -231,9 +254,7 @@ Dialog {
                     placeholderText: hasLocalCityList ? qsTr("搜索城市") : qsTr("搜索城市，例如「柏林」")
                     onTextChanged: {
                         root.searchText = text
-                        if (!root.hasLocalCityList) {
-                            searchDebounceTimer.restart()
-                        }
+                        searchDebounceTimer.restart()
                     }
                 }
             }
@@ -255,13 +276,13 @@ Dialog {
                     id: cityListView
                     anchors.fill: parent
                     clip: true
-                    model: root.filteredCities
+                    model: root.availableCities
                     currentIndex: -1
 
                     delegate: ListViewDelegate {
                         required property var modelData
                         required property int index
-                        
+
                         width: ListView.view.width
                         text: modelData.name || ""
                         highlighted: cityListView.currentIndex === index
@@ -361,6 +382,7 @@ Dialog {
             if (root.useCoordinateInput) {
                 const lat = parseFloat(latitudeInput.text)
                 const lon = parseFloat(longitudeInput.text)
+                // 名字留空，后端会在后台做逆地理编码再补上
                 backend.addCityRecord({
                     "name": "",
                     "mode": "coordinates",
@@ -368,8 +390,10 @@ Dialog {
                     "longitude": lon
                 })
             } else if (root.currentSelection) {
+                // name 是长名称（列表里显示的那个），short_name 是短名称（小组件上显示）
                 backend.addCityRecord({
                     "name": root.currentSelection.name ?? "",
+                    "short_name": root.currentSelection.short_name ?? "",
                     "code": root.currentSelection.code ?? "",
                     "mode": root.currentSelection.mode ?? "city",
                     "latitude": parseFloat(root.currentSelection.latitude ?? 0) || null,

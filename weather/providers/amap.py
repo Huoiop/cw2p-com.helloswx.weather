@@ -1,6 +1,6 @@
 """高德天气。需要 API Key，按城市 adcode 取数。"""
 
-from typing import Any, Dict, List
+from typing import Any
 
 from .. import codes
 from ..http import RequestError, get_json
@@ -46,7 +46,7 @@ class AmapProvider(WeatherProvider):
         self._apply_forecast(snapshot, location.code, table)
         return snapshot
 
-    def _request(self, city: str, extensions: str) -> Dict[str, Any]:
+    def _request(self, city: str, extensions: str) -> dict[str, Any]:
         url = _ENDPOINT.format(key=self.api_key, city=city, extensions=extensions)
         try:
             payload = get_json(url, timeout=10.0)
@@ -57,7 +57,9 @@ class AmapProvider(WeatherProvider):
             raise ProviderError(str(payload.get("info") or "高德天气请求失败"))
         return payload
 
-    def _apply_forecast(self, snapshot: Snapshot, city: str, table: codes.StatusTable) -> None:
+    def _apply_forecast(
+        self, snapshot: Snapshot, city: str, table: codes.StatusTable
+    ) -> None:
         """高德只有逐日预报，这里仅取当天最高 / 最低温。
 
         没有逐小时数据，因此该源不提供降水预报屏幕。
@@ -70,7 +72,7 @@ class AmapProvider(WeatherProvider):
         forecasts = payload.get("forecasts") or []
         if not forecasts:
             return
-        casts: List[Dict[str, Any]] = forecasts[0].get("casts") or []
+        casts: list[dict[str, Any]] = forecasts[0].get("casts") or []
         if not casts:
             return
 

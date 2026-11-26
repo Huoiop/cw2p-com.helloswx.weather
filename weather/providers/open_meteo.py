@@ -1,7 +1,7 @@
 """Open-Meteo。无需 API Key，仅按经纬度取数，附带在线城市搜索。"""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .. import codes
 from ..http import RequestError, build_url, get_json
@@ -70,8 +70,8 @@ class OpenMeteoProvider(WeatherProvider):
         return snapshot
 
     def _parse_hourly(
-        self, payload: Dict[str, Any], table: codes.StatusTable, night: bool
-    ) -> List[HourlyEntry]:
+        self, payload: dict[str, Any], table: codes.StatusTable, night: bool
+    ) -> list[HourlyEntry]:
         hourly = payload.get("hourly") or {}
         times = hourly.get("time") or []
         temperatures = hourly.get("temperature_2m") or []
@@ -79,21 +79,28 @@ class OpenMeteoProvider(WeatherProvider):
         precipitation = hourly.get("precipitation") or []
 
         start = self._current_index(times)
-        entries: List[HourlyEntry] = []
-        for index in range(start, min(len(times), len(temperatures), len(weathers), start + 24)):
+        entries: list[HourlyEntry] = []
+        for index in range(
+            start, min(len(times), len(temperatures), len(weathers), start + 24)
+        ):
             canonical = table.canonical(weathers[index])
-            amount = self.to_float(precipitation[index]) if index < len(precipitation) else None
+            amount = (
+                self.to_float(precipitation[index])
+                if index < len(precipitation)
+                else None
+            )
             entries.append(
                 HourlyEntry(
                     canonical=canonical,
                     temperature=self.to_float(temperatures[index]),
-                    precipitating=(amount or 0.0) > 0 or codes.is_precipitation(canonical),
+                    precipitating=(amount or 0.0) > 0
+                    or codes.is_precipitation(canonical),
                     night=night,
                 )
             )
         return entries
 
-    def _parse_minutely(self, payload: Dict[str, Any]) -> Optional[MinutelySeries]:
+    def _parse_minutely(self, payload: dict[str, Any]) -> MinutelySeries | None:
         block = payload.get("minutely_15") or {}
         times = block.get("time") or []
         values = block.get("precipitation") or []
@@ -101,13 +108,13 @@ class OpenMeteoProvider(WeatherProvider):
             return None
 
         start = self._current_index(times)
-        numbers = [self.to_float(item) or 0.0 for item in values[start:start + 16]]
+        numbers = [self.to_float(item) or 0.0 for item in values[start : start + 16]]
         if not numbers:
             return None
         return MinutelySeries(values=numbers, step=15)
 
     @staticmethod
-    def _current_index(times: List[str]) -> int:
+    def _current_index(times: list[str]) -> int:
         """本地时间序列中第一个不早于当前时刻的位置。"""
         now = datetime.now()
         for index, value in enumerate(times):
@@ -119,7 +126,7 @@ class OpenMeteoProvider(WeatherProvider):
                 return index
         return 0
 
-    def search_cities(self, term: str) -> List[Dict[str, str]]:
+    def search_cities(self, term: str) -> list[dict[str, str]]:
         term = term.strip()
         if not term:
             return []
@@ -128,7 +135,7 @@ class OpenMeteoProvider(WeatherProvider):
         except RequestError:
             return []
 
-        results: List[Dict[str, str]] = []
+        results: list[dict[str, str]] = []
         for item in payload.get("results") or []:
             latitude = self.to_float(item.get("latitude"))
             longitude = self.to_float(item.get("longitude"))

@@ -16,14 +16,18 @@ Clip {
 
     onClicked: root.makeDefaultRequested(String(city.id || ""))
 
-    ToolTip.delay: 450
-    ToolTip.visible: hovered
-    ToolTip.text: {
-        const location = city.latitude !== undefined && city.latitude !== null
-                       ? qsTr("坐标 %1, %2").arg(Number(city.latitude).toFixed(2)).arg(Number(city.longitude).toFixed(2))
-                       : qsTr("城市代码 %1").arg(city.providerCode || qsTr("暂无映射"))
-        const status = city.error ? city.error : qsTr("当前数据源：%1").arg(city.provider || "")
-        return [location, status].join("\n")
+    // ToolTip 要写成子对象：`import RinUI` 排在 `import QtQuick.Controls` 后面，
+    // 裸名字 ToolTip 解析到 RinUI 的组件（附加属性拿到的还是 Qt 自带样式）。
+    ToolTip {
+        delay: 450
+        text: {
+            const location = city.latitude !== undefined && city.latitude !== null
+                           ? qsTr("坐标 %1, %2").arg(Number(city.latitude).toFixed(2)).arg(Number(city.longitude).toFixed(2))
+                           : qsTr("城市代码 %1").arg(city.providerCode || qsTr("暂无映射"))
+            const status = city.error ? city.error : qsTr("当前数据源：%1").arg(city.provider || "")
+            return [location, status].join("\n")
+        }
+        visible: root.hovered
     }
 
     ColumnLayout {
@@ -58,8 +62,10 @@ Clip {
                 icon.name: "ic_fluent_more_horizontal_20_regular"
                 onClicked: moreMenu.open()
 
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("城市操作")
+                ToolTip {
+                    text: qsTr("城市操作")
+                    visible: moreButton.hovered
+                }
 
                 Menu {
                     id: moreMenu

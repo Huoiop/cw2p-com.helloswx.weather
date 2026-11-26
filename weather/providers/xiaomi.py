@@ -1,6 +1,6 @@
 """小米天气。无需 API Key，支持城市代码与经纬度，提供预警和分钟级降水。"""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .. import codes
 from ..alerts import build_alert
@@ -67,7 +67,7 @@ class XiaomiProvider(WeatherProvider):
         return snapshot
 
     @staticmethod
-    def _parse_daily(payload: Dict[str, Any], snapshot: Snapshot) -> None:
+    def _parse_daily(payload: dict[str, Any], snapshot: Snapshot) -> None:
         daily = (payload.get("forecastDaily") or {}).get("temperature") or {}
         values = daily.get("value") or []
         if not values:
@@ -84,12 +84,14 @@ class XiaomiProvider(WeatherProvider):
         snapshot.temp_low = min(first, second)
 
     @staticmethod
-    def _parse_hourly(payload: Dict[str, Any], table: codes.StatusTable, night: bool) -> List[HourlyEntry]:
+    def _parse_hourly(
+        payload: dict[str, Any], table: codes.StatusTable, night: bool
+    ) -> list[HourlyEntry]:
         hourly = payload.get("forecastHourly") or {}
         temperatures = ((hourly.get("temperature") or {}).get("value")) or []
         weathers = ((hourly.get("weather") or {}).get("value")) or []
 
-        entries: List[HourlyEntry] = []
+        entries: list[HourlyEntry] = []
         for index in range(min(len(temperatures), len(weathers), 24)):
             canonical = table.canonical(weathers[index])
             entries.append(
@@ -103,7 +105,7 @@ class XiaomiProvider(WeatherProvider):
         return entries
 
     @staticmethod
-    def _parse_minutely(payload: Dict[str, Any]) -> Optional[MinutelySeries]:
+    def _parse_minutely(payload: dict[str, Any]) -> MinutelySeries | None:
         minutely = payload.get("minutely") or {}
         values = minutely.get("precipitation")
         if not isinstance(values, list) or not values:
@@ -112,8 +114,8 @@ class XiaomiProvider(WeatherProvider):
         return MinutelySeries(values=numbers, step=1)
 
     @staticmethod
-    def _parse_alerts(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-        results: List[Dict[str, Any]] = []
+    def _parse_alerts(payload: dict[str, Any]) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
         for item in payload.get("alerts") or []:
             if not isinstance(item, dict):
                 continue

@@ -1,6 +1,6 @@
 """和风天气。需要 API Key，支持 LocationID 与经纬度，提供预警和分钟级降水。"""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .. import codes
 from ..alerts import build_alert
@@ -58,7 +58,7 @@ class QWeatherProvider(WeatherProvider):
             return f"{location.longitude:.2f},{location.latitude:.2f}"
         return location.code
 
-    def _request(self, path: str, target: str, extra: str = "") -> Dict[str, Any]:
+    def _request(self, path: str, target: str, extra: str = "") -> dict[str, Any]:
         url = f"{_HOST}{path}?location={target}&key={self.api_key}{extra}"
         try:
             payload = get_json(url, timeout=10.0)
@@ -82,13 +82,15 @@ class QWeatherProvider(WeatherProvider):
         snapshot.temp_high = self.to_float(today.get("tempMax"))
         snapshot.temp_low = self.to_float(today.get("tempMin"))
 
-    def _fetch_hourly(self, target: str, table: codes.StatusTable, night: bool) -> List[HourlyEntry]:
+    def _fetch_hourly(
+        self, target: str, table: codes.StatusTable, night: bool
+    ) -> list[HourlyEntry]:
         try:
             payload = self._request("/v7/weather/24h", target)
         except ProviderError:
             return []
 
-        entries: List[HourlyEntry] = []
+        entries: list[HourlyEntry] = []
         for item in (payload.get("hourly") or [])[:24]:
             canonical = table.canonical(item.get("icon"))
             precipitation = self.to_float(item.get("precip"))
@@ -96,13 +98,14 @@ class QWeatherProvider(WeatherProvider):
                 HourlyEntry(
                     canonical=canonical,
                     temperature=self.to_float(item.get("temp")),
-                    precipitating=(precipitation or 0.0) > 0 or codes.is_precipitation(canonical),
+                    precipitating=(precipitation or 0.0) > 0
+                    or codes.is_precipitation(canonical),
                     night=night,
                 )
             )
         return entries
 
-    def _fetch_minutely(self, location: Location) -> Optional[MinutelySeries]:
+    def _fetch_minutely(self, location: Location) -> MinutelySeries | None:
         if location.longitude is None or location.latitude is None:
             return None
         target = f"{location.longitude:.2f},{location.latitude:.2f}"
@@ -111,18 +114,21 @@ class QWeatherProvider(WeatherProvider):
         except ProviderError:
             return None
 
-        values = [self.to_float(item.get("precip")) or 0.0 for item in payload.get("minutely") or []]
+        values = [
+            self.to_float(item.get("precip")) or 0.0
+            for item in payload.get("minutely") or []
+        ]
         if not values:
             return None
         return MinutelySeries(values=values, step=5)
 
-    def _fetch_alerts(self, target: str) -> List[Dict[str, Any]]:
+    def _fetch_alerts(self, target: str) -> list[dict[str, Any]]:
         try:
             payload = self._request("/v7/warning/now", target)
         except ProviderError:
             return []
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for item in payload.get("warning") or []:
             alert = build_alert(
                 raw_title=str(item.get("title", "")),

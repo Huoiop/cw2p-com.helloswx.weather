@@ -3,7 +3,8 @@
 导入各模块即可通过 ``@register`` 完成注册；顺序决定设置页中的展示顺序。
 """
 
-from .base import (  # noqa: F401
+from . import amap, open_meteo, qq, qweather, xiaomi  # noqa: F401  保证注册副作用
+from .base import (
     ProviderError,
     WeatherProvider,
     create,
@@ -11,7 +12,6 @@ from .base import (  # noqa: F401
     provider_classes,
     register,
 )
-from . import xiaomi, qweather, amap, qq, open_meteo  # noqa: F401  保证注册副作用
 
 __all__ = [
     "ProviderError",

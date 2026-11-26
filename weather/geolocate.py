@@ -8,7 +8,7 @@
 三步里任何一步失败都只是拿不到位置，不影响手动选择。
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from .http import RequestError, fetch_json, get_json
 
@@ -20,7 +20,7 @@ _CITY_ENDPOINT = (
 )
 
 
-def coordinates_by_ip(timeout: float = 8.0) -> Optional[Tuple[float, float]]:
+def coordinates_by_ip(timeout: float = 8.0) -> tuple[float, float] | None:
     """按出口 IP 取经纬度。"""
     try:
         payload = get_json(_IP_ENDPOINT, timeout=timeout)
@@ -43,7 +43,7 @@ def city_name_at(latitude: float, longitude: float, timeout: float = 8.0) -> str
     except RequestError:
         return ""
 
-    entries: List[Dict[str, Any]] = payload if isinstance(payload, list) else [payload]
+    entries: list[dict[str, Any]] = payload if isinstance(payload, list) else [payload]
     for entry in entries:
         if not isinstance(entry, dict):
             continue
@@ -53,7 +53,7 @@ def city_name_at(latitude: float, longitude: float, timeout: float = 8.0) -> str
     return ""
 
 
-def locate(timeout: float = 8.0) -> Optional[Dict[str, Any]]:
+def locate(timeout: float = 8.0) -> dict[str, Any] | None:
     """返回 ``{"latitude", "longitude", "name"}``；定位不到时返回 ``None``。"""
     position = coordinates_by_ip(timeout=timeout)
     if position is None:

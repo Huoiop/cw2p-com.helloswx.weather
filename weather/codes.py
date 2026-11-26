@@ -7,14 +7,13 @@
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from . import DATA_DIR, LOTTIE_DIR
 
 UNKNOWN = 99
 
 # 归一化编号 -> (白天图标, 夜间图标)
-_METEOCONS: Dict[int, Tuple[str, str]] = {
+_METEOCONS: dict[int, tuple[str, str]] = {
     0: ("clear-day", "clear-night"),
     1: ("partly-cloudy-day", "partly-cloudy-night"),
     2: ("overcast-day", "overcast-night"),
@@ -56,7 +55,35 @@ _METEOCONS: Dict[int, Tuple[str, str]] = {
 }
 
 # 含降水的归一化编号
-_PRECIPITATION = frozenset({3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 21, 22, 23, 24, 25, 26, 27, 28, 34})
+_PRECIPITATION = frozenset(
+    {
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        19,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        34,
+    }
+)
 
 # 光晕颜色取自设计稿（node 25:579 / 427:240）
 GLOW_DAY = ("#F8AF18", 0.15)
@@ -64,14 +91,14 @@ GLOW_NIGHT = ("#72B9D5", 0.30)
 GLOW_RAIN = ("#0A5AD4", 0.15)
 GLOW_UNAVAILABLE = ("#FDE047", 0.15)
 
-SEVERITY_GLOW: Dict[str, Tuple[str, float]] = {
+SEVERITY_GLOW: dict[str, tuple[str, float]] = {
     "blue": ("#0A5AD4", 0.15),
     "yellow": ("#FDE047", 0.15),
     "orange": ("#FB923C", 0.15),
     "red": ("#EF4444", 0.15),
 }
 
-SEVERITY_ICON: Dict[str, str] = {
+SEVERITY_ICON: dict[str, str] = {
     "blue": "code-blue",
     "yellow": "code-yellow",
     "orange": "code-orange",
@@ -83,13 +110,15 @@ class StatusTable:
     """单个提供商的天气代码对照表。"""
 
     def __init__(self, filename: str):
-        self._to_canonical: Dict[str, int] = {}
-        self._describe: Dict[str, str] = {}
-        self._text_to_canonical: Dict[str, int] = {}
+        self._to_canonical: dict[str, int] = {}
+        self._describe: dict[str, str] = {}
+        self._text_to_canonical: dict[str, int] = {}
 
         path = DATA_DIR / filename
         try:
-            entries: List[dict] = json.loads(path.read_text(encoding="utf-8"))["weatherinfo"]
+            entries: list[dict] = json.loads(path.read_text(encoding="utf-8"))[
+                "weatherinfo"
+            ]
         except (OSError, ValueError, KeyError):
             entries = []
 
@@ -115,11 +144,12 @@ class StatusTable:
         if text in self._text_to_canonical:
             return self._text_to_canonical[text]
         # 退化为包含匹配，优先匹配更长的描述（"雷阵雨" 先于 "阵雨"）
-        best: Optional[str] = None
+        best: str | None = None
         for candidate in self._text_to_canonical:
-            if candidate and candidate in text:
-                if best is None or len(candidate) > len(best):
-                    best = candidate
+            if not candidate or candidate not in text:
+                continue
+            if best is None or len(candidate) > len(best):
+                best = candidate
         return self._text_to_canonical[best] if best else UNKNOWN
 
 
@@ -159,7 +189,7 @@ def icon_path(slug: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def _icon_metrics() -> Dict[str, float]:
+def _icon_metrics() -> dict[str, float]:
     """各图标内容在画布中的占比，由 ``tools/build_icon_metrics.py`` 生成。"""
     try:
         return json.loads((LOTTIE_DIR / "metrics.json").read_text(encoding="utf-8"))
@@ -179,7 +209,7 @@ def icon_scale(slug: str) -> float:
     return round(1.0 / ratio, 4)
 
 
-def icon_visual(slug: str) -> Dict[str, object]:
+def icon_visual(slug: str) -> dict[str, object]:
     """QML 需要的一组图标信息：路径 + 放大倍数。"""
     return {"iconPath": icon_path(slug), "iconScale": icon_scale(slug)}
 
@@ -188,7 +218,7 @@ def is_precipitation(canonical: int) -> bool:
     return canonical in _PRECIPITATION
 
 
-def glow_for(canonical: int, night: bool = False) -> Tuple[str, float]:
+def glow_for(canonical: int, night: bool = False) -> tuple[str, float]:
     """主体屏幕的顶部光晕颜色。"""
     if canonical == UNKNOWN:
         return GLOW_UNAVAILABLE

@@ -11,9 +11,14 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: windows-latest
+    timeout-minutes: 30
     permissions:
       contents: write
     env:
@@ -25,32 +30,41 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
       - name: Resolve version
         id: version
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            version="${INPUT_VERSION#v}"
           else
-            echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+            version="${REF_NAME#refs/tags/v}"
           fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.0-9A-Za-z]+)?$ ]]; then
+            echo "::error::Invalid release version: '$version'"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
 
       - name: Install dependencies
-        run: |
-          pip install -e .
+        run: pip install -e .
 
       - name: Sync version into cwplugin.json
-        # cwplugin.json 的 version 才是发布到广场、写进包内的版本，
-        # 这里按 tag 同步，避免仓库里的版本号落后于 tag。仅作用于打包产物，不提交回仓库。
+        # cwplugin.json 的 version 会写进打包产物，这里按 tag 同步，
+        # 避免仓库里的版本号落后于 tag。仅作用于打包产物，不提交回仓库。
         shell: bash
         env:
-          VERSION: ${{ steps.version.outputs.value }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           python - <<'PY'
           import json, os, pathlib
@@ -62,6 +76,7 @@ jobs:
           PY
 
       - name: Build plugin packages
+        shell: bash
         run: |
           # Build .cwplugin format
           cw-plugin-pack
@@ -76,8 +91,9 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         shell: bash
         env:
-          TAG: v${{ steps.version.outputs.value }}
+          TAG: v${{ steps.version.outputs.version }}
         run: |
+          set -euo pipefail
           if git rev-parse -q --verify "refs/tags/${TAG}" > /dev/null; then
             echo "Tag ${TAG} already exists."
             exit 1
@@ -87,22 +103,23 @@ jobs:
           git tag --annotate "${TAG}" --message "Release ${TAG}"
           git push origin "${TAG}"
 
-      - name: Generate changelog
-        id: changelog
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: .git-cliff.toml
-          args: --tag v${{ steps.version.outputs.value }}
+      - name: Install git-cliff
+        uses: taiki-e/install-action@git-cliff
+
+      - name: Generate changelog with git-cliff
+        shell: bash
+        run: |
+          git-cliff --config .git-cliff.toml --tag "v${{ steps.version.outputs.version }}" --output CHANGELOG.md
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.value }}
-          name: Release v${{ steps.version.outputs.value }}
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
           draft: false
           prerelease: false
           files: |
             *.cwplugin
             *.zip
-          body: ${{ steps.changelog.outputs.content }}
+          body_path: CHANGELOG.md
           generate_release_notes: false

@@ -2,7 +2,6 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Dict, List, Optional, Type
 
 from ..models import Location, Snapshot
 
@@ -33,17 +32,17 @@ class WeatherProvider(ABC):
     def fetch(self, location: Location) -> Snapshot:
         """抓取并解析天气数据，失败时抛出 :class:`ProviderError`。"""
 
-    def search_cities(self, term: str) -> List[Dict[str, str]]:
+    def search_cities(self, term: str) -> list[dict[str, str]]:
         """在线城市搜索；默认不支持，由内置城市库负责。"""
         return []
 
     @staticmethod
-    def is_night(reference: Optional[datetime] = None) -> bool:
+    def is_night(reference: datetime | None = None) -> bool:
         hour = (reference or datetime.now()).hour
         return hour < 6 or hour >= 18
 
     @staticmethod
-    def to_float(value: object) -> Optional[float]:
+    def to_float(value: object) -> float | None:
         if value is None or value == "":
             return None
         try:
@@ -52,23 +51,25 @@ class WeatherProvider(ABC):
             return None
 
 
-_REGISTRY: Dict[str, Type[WeatherProvider]] = {}
+_REGISTRY: dict[str, type[WeatherProvider]] = {}
 
 
-def register(provider_class: Type[WeatherProvider]) -> Type[WeatherProvider]:
+def register(provider_class: type[WeatherProvider]) -> type[WeatherProvider]:
     _REGISTRY[provider_class.id] = provider_class
     return provider_class
 
 
-def provider_classes() -> List[Type[WeatherProvider]]:
+def provider_classes() -> list[type[WeatherProvider]]:
     return list(_REGISTRY.values())
 
 
-def get_provider_class(provider_id: str) -> Optional[Type[WeatherProvider]]:
+def get_provider_class(provider_id: str) -> type[WeatherProvider] | None:
     return _REGISTRY.get(provider_id)
 
 
-def create(provider_id: str, api_key: str = "", locale: str = "zh_cn") -> Optional[WeatherProvider]:
+def create(
+    provider_id: str, api_key: str = "", locale: str = "zh_cn"
+) -> WeatherProvider | None:
     provider_class = _REGISTRY.get(provider_id)
     if provider_class is None:
         return None

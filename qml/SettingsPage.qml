@@ -22,6 +22,8 @@ PluginPage {
     property var info: ({})
     property bool currentProviderRequiresKey: false
     property bool syncingControls: false  // 防止程序化回写 currentIndex 时触发 setProvider
+    property bool reloadQueued: false     // 合并同一轮事件里的多次刷新请求
+    property bool pendingFullReload: false
 
     // RinUI 的下拉菜单取文本用的是 model[textRole]，必须是带 role 的 ListModel，
     // 传普通数组或对象数组会得到一整列空白项。
@@ -38,16 +40,39 @@ PluginPage {
         }
     }
 
+    /*!
+        天气数据到位会连着发 configChanged / dataChanged / locatingChanged，
+        每个都重算一次 settings() 纯属浪费（城市列表还要重新问一遍数据源）。
+        这里统一推到一个事件循环里合并成一次。
+    */
+    function requestReload(full) {
+        if (full) {
+            page.pendingFullReload = true
+        }
+        if (page.reloadQueued) {
+            return
+        }
+        page.reloadQueued = true
+        reloadTimer.restart()
+    }
+
+    /*! 只换 info（天气数据 / 定位状态变化），不动控件，避免把用户输入顶掉 */
+    function refreshInfo() {
+        if (!backend) {
+            return
+        }
+        var newInfo = backend.settings()
+        if (newInfo) {
+            page.info = newInfo
+        }
+    }
+
     function reload() {
         if (!backend) {
             console.log("SettingsPage.reload(): backend is null")
             return
         }
-        
-        var newInfo = backend.settings()
-        if (newInfo) {
-            info = newInfo
-        }
+        refreshInfo()
 
         if (providerModel.count === 0) {
             var list = backend.providers()
@@ -64,6 +89,21 @@ PluginPage {
             console.log("SettingsPage.reload(): providerModel.count =", providerModel.count)
         }
         syncControls()
+    }
+
+    Timer {
+        id: reloadTimer
+        interval: 0
+        onTriggered: {
+            page.reloadQueued = false
+            const full = page.pendingFullReload
+            page.pendingFullReload = false
+            if (full) {
+                page.reload()
+            } else {
+                page.refreshInfo()
+            }
+        }
     }
 
     /*! 把配置值写回控件 */
@@ -97,21 +137,10 @@ PluginPage {
 
     Connections {
         target: backend
-        function onConfigChanged() { page.reload() }
-        function onDataChanged() {
-            if (backend) {
-                var newInfo = backend.settings()
-                if (newInfo) page.info = newInfo
-                page.syncControls()
-            }
-        }
-        function onLocatingChanged() {
-            if (backend) {
-                var newInfo = backend.settings()
-                if (newInfo) page.info = newInfo
-                page.syncControls()
-            }
-        }
+        // 配置变了才需要回填控件（数据源下拉、API Key、刷新间隔）
+        function onConfigChanged() { page.requestReload(true) }
+        function onDataChanged() { page.requestReload(false) }
+        function onLocatingChanged() { page.requestReload(false) }
     }
 
     // ------------------------------------------------------------------ 状态
@@ -194,16 +223,23 @@ PluginPage {
             Item { Layout.fillWidth: true }
 
             ToolButton {
+                id: locateButton
                 objectName: "locateButton"
                 icon.name: "ic_fluent_location_ripple_20_regular"
                 enabled: page.info && !page.info.locating
                 onClicked: backend.locateAutomatically()
 
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("添加当前位置")
+                // 必须是 ToolTip {} 子对象而不是 ToolTip.text 附加属性：
+                // `import RinUI` 在 `import QtQuick.Controls` 之后，裸名字 ToolTip
+                // 解析到 RinUI 的组件，附加属性那条路拿到的还是 Qt 自带的样式。
+                ToolTip {
+                    text: qsTr("添加当前位置")
+                    visible: locateButton.hovered
+                }
             }
 
             ToolButton {
+                id: chooseButton
                 objectName: "chooseButton"
                 icon.name: "ic_fluent_add_20_regular"
                 onClicked: {
@@ -211,8 +247,10 @@ PluginPage {
                     cityDialog.open()
                 }
 
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("添加城市")
+                ToolTip {
+                    text: qsTr("添加城市")
+                    visible: chooseButton.hovered
+                }
             }
         }
 

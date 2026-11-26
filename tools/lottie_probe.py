@@ -1,6 +1,6 @@
 """隔离测试 qt-lottie 的播放行为。
 
-    .venv/bin/python tools/lottie_probe.py
+.venv/bin/python tools/lottie_probe.py
 """
 
 import sys
@@ -19,23 +19,25 @@ def uri(name: str) -> str:
     return (ROOT / "assets" / "lottie" / f"{name}.json").resolve().as_uri()
 
 
-QML = """
+PROBE_URI = uri("code-yellow")
+
+QML = f"""
 import QtQuick
 import QtQuick.Window
 import QtLottie 1.0
 
-Window {
+Window {{
     width: 120; height: 120; visible: true
-    LottieAnimation {
+    LottieAnimation {{
         objectName: "anim"
         anchors.fill: parent
         loops: -1
         autoPlay: true
-        source: "%s"
+        source: "{PROBE_URI}"
         playing: true
-    }
-}
-""" % uri("code-yellow")
+    }}
+}}
+"""
 
 app = QGuiApplication(sys.argv)
 init_qml()
@@ -60,6 +62,10 @@ app.exec()
 before = [f for t, f in log if t < 1.4]
 after = [f for t, f in log if t > 1.7]
 span = 1.4 - log[0][0] if log else 1
-print(f"总帧数 361 / 6s → 期望 60fps")
-print(f"换 source 前：帧号 {before[0]} → {before[-1]}，约 {(before[-1] - before[0]) / span:.0f} fps")
-print(f"换 source 后：帧号 {after[0]} → {after[-1]}  ({'继续播放' if after[-1] > after[0] else '停住了'})")
+print("总帧数 361 / 6s → 期望 60fps")
+print(
+    f"换 source 前：帧号 {before[0]} → {before[-1]}，约 {(before[-1] - before[0]) / span:.0f} fps"
+)
+print(
+    f"换 source 后：帧号 {after[0]} → {after[-1]}  ({'继续播放' if after[-1] > after[0] else '停住了'})"
+)

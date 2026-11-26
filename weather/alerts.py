@@ -5,15 +5,31 @@
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-_SEVERITY_ALIASES: Dict[str, str] = {
-    "1": "blue", "2": "yellow", "3": "orange", "4": "red",
-    "minor": "blue", "moderate": "yellow", "severe": "orange", "extreme": "red",
-    "blue": "blue", "yellow": "yellow", "orange": "orange", "red": "red",
-    "蓝": "blue", "黄": "yellow", "橙": "orange", "红": "red",
-    "蓝色": "blue", "黄色": "yellow", "橙色": "orange", "红色": "red",
-    "白": "blue", "白色": "blue",
+_SEVERITY_ALIASES: dict[str, str] = {
+    "1": "blue",
+    "2": "yellow",
+    "3": "orange",
+    "4": "red",
+    "minor": "blue",
+    "moderate": "yellow",
+    "severe": "orange",
+    "extreme": "red",
+    "blue": "blue",
+    "yellow": "yellow",
+    "orange": "orange",
+    "red": "red",
+    "蓝": "blue",
+    "黄": "yellow",
+    "橙": "orange",
+    "红": "red",
+    "蓝色": "blue",
+    "黄色": "yellow",
+    "橙色": "orange",
+    "红色": "red",
+    "白": "blue",
+    "白色": "blue",
 }
 
 _SEVERITY_LABEL = {"blue": "蓝色", "yellow": "黄色", "orange": "橙色", "red": "红色"}
@@ -58,7 +74,7 @@ def compose_title(raw_title: str, severity: str, fallback_type: str = "") -> str
             for prefix in _TITLE_PREFIXES:
                 position = head.rfind(prefix)
                 if position != -1:
-                    head = head[position + len(prefix):]
+                    head = head[position + len(prefix) :]
             kind = re.sub(r"[^一-龥]", "", head)[-6:]
             return f"{kind}{match.group(1)}色预警"
 
@@ -75,7 +91,7 @@ def compose_title(raw_title: str, severity: str, fallback_type: str = "") -> str
     return f"{label}预警"
 
 
-def extract_metrics(text: str) -> List[Dict[str, str]]:
+def extract_metrics(text: str) -> list[dict[str, str]]:
     """解析预警正文中的「N 小时内 + 数值 单位」，解析不出则返回空列表。"""
     if not text:
         return []
@@ -89,8 +105,7 @@ def extract_metrics(text: str) -> List[Dict[str, str]]:
         if not match:
             continue
         number = match.group(1)
-        if number.endswith(".0"):
-            number = number[:-2]
+        number = number.removesuffix(".0")
         qualifier = match.group(2)
         prefix = "≥" if qualifier == "以上" else "≤" if qualifier == "以下" else ""
         return [
@@ -105,12 +120,14 @@ def build_alert(
     severity_value: Any,
     text: str = "",
     fallback_type: str = "",
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """构造统一的预警字典；标题与正文都为空时返回 ``None``。"""
     if not raw_title and not text:
         return None
 
-    severity = normalise_severity(severity_value if severity_value is not None else raw_title)
+    severity = normalise_severity(
+        severity_value if severity_value is not None else raw_title
+    )
     return {
         "title": compose_title(raw_title, severity, fallback_type),
         "severity": severity,

@@ -6,7 +6,7 @@ import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, Optional
+from typing import Any
 
 USER_AGENT = "ClassWidgets2-Weather/1.0 (+https://github.com/xuanxuan1231/cw2p-com.helloswx.weather)"
 
@@ -17,7 +17,7 @@ class RequestError(Exception):
     """网络请求失败。"""
 
 
-def build_url(template: str, params: Dict[str, Any]) -> str:
+def build_url(template: str, params: dict[str, Any]) -> str:
     """把 ``{name}`` 占位符替换成 URL 编码后的值。"""
     url = template
     for key, value in params.items():
@@ -27,7 +27,9 @@ def build_url(template: str, params: Dict[str, Any]) -> str:
     return url
 
 
-def fetch_json(url: str, timeout: float = 10.0, headers: Optional[Dict[str, str]] = None) -> Any:
+def fetch_json(
+    url: str, timeout: float = 10.0, headers: dict[str, str] | None = None
+) -> Any:
     """发起 GET 请求并解析 JSON，返回原始结构（可能是 dict 或 list）。"""
     request_headers = {
         "User-Agent": USER_AGENT,
@@ -39,7 +41,9 @@ def fetch_json(url: str, timeout: float = 10.0, headers: Optional[Dict[str, str]
 
     request = urllib.request.Request(url, headers=request_headers)
     try:
-        with urllib.request.urlopen(request, timeout=timeout, context=_SSL_CONTEXT) as response:
+        with urllib.request.urlopen(
+            request, timeout=timeout, context=_SSL_CONTEXT
+        ) as response:
             raw = response.read()
             if response.headers.get("Content-Encoding") == "gzip":
                 raw = gzip.decompress(raw)
@@ -56,7 +60,9 @@ def fetch_json(url: str, timeout: float = 10.0, headers: Optional[Dict[str, str]
         raise RequestError("响应不是合法的 JSON") from error
 
 
-def get_json(url: str, timeout: float = 10.0, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+def get_json(
+    url: str, timeout: float = 10.0, headers: dict[str, str] | None = None
+) -> dict[str, Any]:
     """发起 GET 请求并解析 JSON 对象；失败时抛出 :class:`RequestError`。"""
     payload = fetch_json(url, timeout=timeout, headers=headers)
     if not isinstance(payload, dict):

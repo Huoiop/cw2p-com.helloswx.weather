@@ -25,9 +25,11 @@ def content_ratio(path: Path) -> float:
     widest = tallest = 0
     for index in range(SAMPLES):
         frame = round(index * (total - 1) / (SAMPLES - 1))
-        alpha = animation.render_pillow_frame(
-            frame_num=frame, width=CANVAS, height=CANVAS
-        ).convert("RGBA").getchannel("A")
+        alpha = (
+            animation.render_pillow_frame(frame_num=frame, width=CANVAS, height=CANVAS)
+            .convert("RGBA")
+            .getchannel("A")
+        )
         box = alpha.getbbox()
         if box:
             widest = max(widest, box[2] - box[0])
