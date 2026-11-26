@@ -4,7 +4,7 @@ from typing import Any
 
 from .. import codes
 from ..http import RequestError, get_json
-from ..models import Location, Snapshot
+from ..models import DailyEntry, Location, Snapshot
 from .base import ProviderError, WeatherProvider, register
 
 _ENDPOINT = "https://restapi.amap.com/v3/weather/weatherInfo?key={key}&city={city}&extensions={extensions}"
@@ -60,7 +60,7 @@ class AmapProvider(WeatherProvider):
     def _apply_forecast(
         self, snapshot: Snapshot, city: str, table: codes.StatusTable
     ) -> None:
-        """高德只有逐日预报，这里仅取当天最高 / 最低温。
+        """高德只有逐日预报，这里取今天与明天的最高 / 最低温和天气。
 
         没有逐小时数据，因此该源不提供降水预报屏幕。
         """
@@ -79,3 +79,14 @@ class AmapProvider(WeatherProvider):
         today = casts[0]
         snapshot.temp_high = self.to_float(today.get("daytemp"))
         snapshot.temp_low = self.to_float(today.get("nighttemp"))
+        if len(casts) > 1:
+            tomorrow = casts[1]
+            description = str(
+                tomorrow.get("dayweather") or tomorrow.get("nightweather") or ""
+            )
+            snapshot.tomorrow = DailyEntry(
+                canonical=table.canonical_from_text(description),
+                description=description,
+                temp_high=self.to_float(tomorrow.get("daytemp")),
+                temp_low=self.to_float(tomorrow.get("nighttemp")),
+            )

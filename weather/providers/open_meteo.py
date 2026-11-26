@@ -5,7 +5,7 @@ from typing import Any
 
 from .. import codes
 from ..http import RequestError, build_url, get_json
-from ..models import HourlyEntry, Location, MinutelySeries, Snapshot
+from ..models import DailyEntry, HourlyEntry, Location, MinutelySeries, Snapshot
 from .base import ProviderError, WeatherProvider, register
 
 _FORECAST = (
@@ -14,7 +14,7 @@ _FORECAST = (
     "&current=temperature_2m,weather_code,is_day"
     "&hourly=temperature_2m,weather_code,precipitation"
     "&minutely_15=precipitation"
-    "&daily=temperature_2m_max,temperature_2m_min"
+    "&daily=temperature_2m_max,temperature_2m_min,weather_code"
     "&timezone=auto&forecast_days=2"
 )
 _GEOCODING = "https://geocoding-api.open-meteo.com/v1/search?name={name}&count=30&language=zh&format=json"
@@ -60,10 +60,23 @@ class OpenMeteoProvider(WeatherProvider):
         daily = payload.get("daily") or {}
         highs = daily.get("temperature_2m_max") or []
         lows = daily.get("temperature_2m_min") or []
+        daily_codes = daily.get("weather_code") or []
         if highs:
             snapshot.temp_high = self.to_float(highs[0])
         if lows:
             snapshot.temp_low = self.to_float(lows[0])
+        if len(highs) > 1 or len(lows) > 1 or len(daily_codes) > 1:
+            raw_code = daily_codes[1] if len(daily_codes) > 1 else None
+            snapshot.tomorrow = DailyEntry(
+                canonical=(
+                    table.canonical(raw_code) if raw_code is not None else codes.UNKNOWN
+                ),
+                description=(
+                    table.describe(raw_code) if raw_code is not None else ""
+                ),
+                temp_high=self.to_float(highs[1]) if len(highs) > 1 else None,
+                temp_low=self.to_float(lows[1]) if len(lows) > 1 else None,
+            )
 
         snapshot.hourly = self._parse_hourly(payload, table, night)
         snapshot.minutely = self._parse_minutely(payload)

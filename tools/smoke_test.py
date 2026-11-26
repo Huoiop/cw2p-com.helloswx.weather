@@ -22,7 +22,7 @@ from weather import codes
 from weather.alerts import build_alert
 from weather.cities import CityRepository
 from weather.config import WeatherConfig
-from weather.models import COORDINATES, Location
+from weather.models import COORDINATES, DailyEntry, Location, Snapshot
 from weather.providers import ProviderError, create, provider_classes
 from weather.service import build_payload
 
@@ -147,6 +147,96 @@ for database, sample in (("xiaomi_weather.db", "海口"), ("amap_weather.db", "�
     if found:
         name = repository.name_for_code(found[0]["code"])
         check(f"{database} 代码反查", bool(name), name)
+
+
+section("到点提醒文案")
+for canonical, label, expected in (
+    (0, "晴", "阳光明媚，宜出门走走。"),
+    (1, "多云", "云影徘徊，出门无妨。"),
+    (2, "阴", "云层低垂，心情勿沉。"),
+    (3, "阵雨", "阵雨忽至，伞在身边。"),
+    (4, "雷阵雨", "雷声隐隐，避雨檐下。"),
+    (5, "冰雹", "冰雹骤落，暂避室内。"),
+    (6, "雨夹雪", "雨雪相杂，备好伞衣。"),
+    (7, "小雨", "细雨如丝，出门带伞。"),
+    (8, "中雨", "雨势渐密，行路慢些。"),
+    (9, "大雨", "大雨滂沱，暂缓远行。"),
+    (14, "小雪", "雪花纷飞，添衣保暖。"),
+    (17, "暴雪", "风雪交加，不宜出门。"),
+    (18, "雾", "雾气氤氲，缓步慢行。"),
+    (19, "冻雨", "冻雨路滑，缓步慢行。"),
+    (20, "沙尘暴", "沙尘漫卷，护好口鼻。"),
+    (32, "大风", "风势正紧，帽要戴稳。"),
+    (53, "霾", "霾色沉沉，口罩护身。"),
+):
+    sentence = codes.outdoor_sentence(canonical)
+    check(f"室外文案 {label}", sentence == expected, sentence)
+check("未知编号不提醒", codes.outdoor_sentence(codes.UNKNOWN) == "")
+
+notice_snapshot = Snapshot(
+    canonical=3,
+    description="阵雨",
+    temperature=18,
+    temp_high=25,
+    temp_low=18,
+    city="海口",
+)
+notice_snapshot.tomorrow = DailyEntry(
+    canonical=7, description="小雨", temp_high=20, temp_low=16
+)
+notice_payload = build_payload(notice_snapshot, Location(name="海口"), None)
+check(
+    "室外提醒文案进 payload",
+    notice_payload["outdoorText"] == "阵雨忽至，伞在身边。",
+    notice_payload["outdoorText"],
+)
+tomorrow = notice_payload["tomorrow"]
+check("明日提醒可用", tomorrow["available"] is True)
+check(
+    "明日提醒是单行文案",
+    tomorrow["text"] == "明日细雨将至，出门莫忘带伞。",
+    tomorrow["text"],
+)
+check("明日提醒不再输出温度", "temperatureHigh" not in tomorrow)
+check(
+    "明日提醒带图标",
+    tomorrow["iconPath"].endswith("drizzle.json"),
+    tomorrow["iconPath"].rsplit("/", 1)[-1],
+)
+no_tomorrow = build_payload(Snapshot(), Location(), None)
+check("没有明日数据时不提醒", no_tomorrow["tomorrow"]["available"] is False)
+
+
+def tomorrow_text(canonical: int, tomorrow_high: float, today_high: float = 25) -> str:
+    """构造一次明日提醒，返回单行文案。"""
+    snapshot = Snapshot(canonical=0, temp_high=today_high)
+    snapshot.tomorrow = DailyEntry(canonical=canonical, temp_high=tomorrow_high)
+    payload = build_payload(snapshot, Location(name="测试"), None)
+    return str(payload["tomorrow"].get("text", ""))
+
+
+for canonical, tomorrow_high, expected, label in (
+    (7, 18, "明日风雨添凉，伞与外套，皆不可少。", "大幅降温 + 雨"),
+    (14, 18, "明日风雪骤寒，厚衣务必加身。", "大幅降温 + 雪"),
+    (7, 32, "明日雨暖交加，伞可携，衣勿过厚。", "大幅升温 + 雨"),
+    (0, 18, "明日气温骤降，不加衣服冻死你喵。", "大幅降温"),
+    (0, 32, "明日暖意回升，衣可稍减。", "大幅升温"),
+    (7, 22, "明日细雨将至，出门莫忘带伞。", "有雨"),
+    (14, 22, "明日有雪，添衣保暖。", "有雪"),
+    (6, 22, "明日雨雪交加，厚衣与伞皆需。", "雨夹雪"),
+    (0, 21, "明日微凉，衣可加一件。", "普通降温"),
+    (0, 29, "明日稍暖，衣可略减。", "普通升温"),
+    (0, 25, "明日晴光可期，宜出门走走。", "晴"),
+    (1, 25, "明日云影轻移，天气尚可。", "多云"),
+    (2, 25, "明日天色微沉，心情自可明朗。", "阴"),
+    (18, 25, "明日晨雾未散，行路宜缓。", "雾"),
+    (53, 25, "明日霾色未清，口罩护身。", "霾"),
+    (20, 25, "明日风沙将起，护好口鼻。", "沙尘"),
+    (32, 25, "明日风大，行路当心。", "大风"),
+):
+    text = tomorrow_text(canonical, tomorrow_high)
+    check(f"明日文案 {label}", text == expected, text)
+check("明日未知天气不提醒", tomorrow_text(codes.UNKNOWN, 25) == "")
 
 
 section("提供商注册")

@@ -5,7 +5,14 @@ from typing import Any
 from .. import codes
 from ..alerts import build_alert
 from ..http import RequestError, get_json
-from ..models import COORDINATES, HourlyEntry, Location, MinutelySeries, Snapshot
+from ..models import (
+    COORDINATES,
+    DailyEntry,
+    HourlyEntry,
+    Location,
+    MinutelySeries,
+    Snapshot,
+)
 from .base import ProviderError, WeatherProvider, register
 
 _ENDPOINT = (
@@ -60,28 +67,63 @@ class XiaomiProvider(WeatherProvider):
             night=night,
         )
 
-        self._parse_daily(payload, snapshot)
+        self._parse_daily(payload, snapshot, table)
         snapshot.hourly = self._parse_hourly(payload, table, night)
         snapshot.minutely = self._parse_minutely(payload)
         snapshot.alerts = self._parse_alerts(payload)
         return snapshot
 
     @staticmethod
-    def _parse_daily(payload: dict[str, Any], snapshot: Snapshot) -> None:
-        daily = (payload.get("forecastDaily") or {}).get("temperature") or {}
+    def _parse_daily(
+        payload: dict[str, Any], snapshot: Snapshot, table: codes.StatusTable
+    ) -> None:
+        forecast = payload.get("forecastDaily") or {}
+        daily = forecast.get("temperature") or {}
         values = daily.get("value") or []
-        if not values:
+        weathers = (forecast.get("weather") or {}).get("value") or []
+
+        if values:
+            today = values[0] or {}
+            # 小米的 from / to 谁高谁低并不固定，统一按大小判定
+            first = WeatherProvider.to_float(today.get("from"))
+            second = WeatherProvider.to_float(today.get("to"))
+            if first is None or second is None:
+                snapshot.temp_high = first if first is not None else second
+                snapshot.temp_low = second if first is not None else None
+            else:
+                snapshot.temp_high = max(first, second)
+                snapshot.temp_low = min(first, second)
+
+        if len(values) <= 1 and len(weathers) <= 1:
             return
-        today = values[0] or {}
-        # 小米把当日最高温放在 from、最低温放在 to
-        first = WeatherProvider.to_float(today.get("from"))
-        second = WeatherProvider.to_float(today.get("to"))
-        if first is None or second is None:
-            snapshot.temp_high = first if first is not None else second
-            snapshot.temp_low = second if first is not None else None
-            return
-        snapshot.temp_high = max(first, second)
-        snapshot.temp_low = min(first, second)
+        tomorrow = values[1] if len(values) > 1 else {}
+        tomorrow = tomorrow or {}
+        raw_weather = weathers[1] if len(weathers) > 1 else None
+        if isinstance(raw_weather, dict):
+            raw_weather = raw_weather.get("from")
+        canonical = (
+            table.canonical(raw_weather)
+            if raw_weather is not None
+            else codes.UNKNOWN
+        )
+        # 与当天一样按大小判定高低：不同地区 / 季节里 from、to 谁大谁小并不固定
+        first = WeatherProvider.to_float(tomorrow.get("from"))
+        second = WeatherProvider.to_float(tomorrow.get("to"))
+        high = low = None
+        if first is not None and second is not None:
+            high, low = max(first, second), min(first, second)
+        elif first is not None:
+            high = first
+        elif second is not None:
+            low = second
+        snapshot.tomorrow = DailyEntry(
+            canonical=canonical,
+            description=(
+                table.describe(raw_weather) if raw_weather is not None else ""
+            ),
+            temp_high=high,
+            temp_low=low,
+        )
 
     @staticmethod
     def _parse_hourly(

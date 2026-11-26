@@ -8,7 +8,7 @@ from PySide6.QtCore import QThread, Signal
 from . import codes
 from .cities import CityRepository, coordinates_for_city
 from .config import WeatherConfig
-from .models import CITY, COORDINATES, Location, Snapshot
+from .models import CITY, COORDINATES, DailyEntry, Location, Snapshot
 from .providers import (
     ProviderError,
     WeatherProvider,
@@ -271,6 +271,101 @@ def _description_of(snapshot: Snapshot) -> str:
     return codes.canonical_description(snapshot.canonical) or description
 
 
+#: 明日最高温相对今天变化多少算「大幅」/「普通」
+_TOMORROW_BIG_CHANGE = 6
+_TOMORROW_SMALL_CHANGE = 3
+
+
+def _tomorrow_weather_text(canonical: int) -> str:
+    """没有明显升降温、也没有降水时的明日天气文案。"""
+    if canonical == 0:
+        return "明日晴光可期，宜出门走走。"
+    if canonical == 1:
+        return "明日云影轻移，天气尚可。"
+    if canonical == 2:
+        return "明日天色微沉，心情自可明朗。"
+    if codes.is_fog(canonical):
+        return "明日晨雾未散，行路宜缓。"
+    if codes.is_haze(canonical):
+        return "明日霾色未清，口罩护身。"
+    if codes.is_dust(canonical):
+        return "明日风沙将起，护好口鼻。"
+    if canonical in (32, 33):
+        return "明日风大，行路当心。"
+    return ""
+
+
+def _tomorrow_text(tomorrow: DailyEntry, today_high: float | None) -> str:
+    """按「降水 + 大幅温度变化 > 降水 > 大幅温度变化 > 普通温度变化 > 天气」选文案。"""
+    canonical = tomorrow.canonical
+    precipitating = codes.is_precipitation(canonical)
+    snowing = codes.is_snow(canonical)
+    mixed = codes.is_mixed_precipitation(canonical)
+
+    big_drop = big_rise = small_drop = small_rise = False
+    if tomorrow.temp_high is not None and today_high is not None:
+        delta = tomorrow.temp_high - today_high
+        if delta <= -_TOMORROW_BIG_CHANGE:
+            big_drop = True
+        elif delta >= _TOMORROW_BIG_CHANGE:
+            big_rise = True
+        elif delta <= -_TOMORROW_SMALL_CHANGE:
+            small_drop = True
+        elif delta >= _TOMORROW_SMALL_CHANGE:
+            small_rise = True
+
+    if big_drop and precipitating:
+        return (
+            "明日风雪骤寒，厚衣务必加身。"
+            if snowing or mixed
+            else "明日风雨添凉，伞与外套，皆不可少。"
+        )
+    if big_rise and precipitating:
+        return (
+            "明日雨暖交加，伞可携，衣勿过厚。"
+            if not snowing and not mixed
+            else "明日暖意回升，衣可稍减。"
+        )
+    if big_drop:
+        return "明日气温骤降，不加衣服冻死你喵。"
+    if big_rise:
+        return "明日暖意回升，衣可稍减。"
+    if precipitating:
+        if mixed:
+            return "明日雨雪交加，厚衣与伞皆需。"
+        if snowing:
+            return "明日有雪，添衣保暖。"
+        return "明日细雨将至，出门莫忘带伞。"
+    if small_drop:
+        return "明日微凉，衣可加一件。"
+    if small_rise:
+        return "明日稍暖，衣可略减。"
+    return _tomorrow_weather_text(canonical)
+
+
+def _tomorrow_screen(
+    tomorrow: DailyEntry | None, today_high: float | None
+) -> dict[str, Any]:
+    """构造「明日天气」提醒：单行文案，不展示具体温度。"""
+    if tomorrow is None:
+        return {"available": False}
+    text = _tomorrow_text(tomorrow, today_high)
+    if not text:
+        return {"available": False}
+
+    slug = codes.icon_slug(tomorrow.canonical, False)
+    colour, alpha = codes.glow_for(tomorrow.canonical, False)
+    screen = {
+        "available": True,
+        "text": text,
+        "precipitating": codes.is_precipitation(tomorrow.canonical),
+        "glowColor": colour,
+        "glowAlpha": alpha,
+    }
+    screen.update(codes.icon_visual(slug))
+    return screen
+
+
 def _precipitation_screen(snapshot: Snapshot) -> dict[str, Any] | None:
     """计算「降水预报」屏幕。"""
     raining_now = codes.is_precipitation(snapshot.canonical)
@@ -404,6 +499,8 @@ def build_payload(
             "precipitation": {"active": False},
             "alert": {"active": False},
             "hourly": [],
+            "outdoorText": "",
+            "tomorrow": {"available": False},
         }
         payload.update(codes.icon_visual("code-yellow"))
         return payload
@@ -431,6 +528,8 @@ def build_payload(
         "hourly": hourly,
         "precipitation": _precipitation_screen(snapshot) or {"active": False},
         "alert": _alert_screen(snapshot) or {"active": False},
+        "outdoorText": codes.outdoor_sentence(snapshot.canonical),
+        "tomorrow": _tomorrow_screen(snapshot.tomorrow, snapshot.temp_high),
     }
     payload.update(
         codes.icon_visual(codes.icon_slug(snapshot.canonical, snapshot.night))

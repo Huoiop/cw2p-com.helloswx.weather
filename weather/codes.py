@@ -218,6 +218,80 @@ def is_precipitation(canonical: int) -> bool:
     return canonical in _PRECIPITATION
 
 
+#: 纯降雪编号（雨夹雪 6 单独处理）
+_SNOW = frozenset({13, 14, 15, 16, 17, 26, 27, 28, 34})
+#: 雨夹雪
+_MIXED_PRECIPITATION = frozenset({6})
+#: 雾 / 霾 / 沙尘
+_FOG = frozenset({18, 35})
+_HAZE = frozenset({53})
+_DUST = frozenset({20, 29, 30, 31})
+
+
+def is_snow(canonical: int) -> bool:
+    return canonical in _SNOW
+
+
+def is_mixed_precipitation(canonical: int) -> bool:
+    return canonical in _MIXED_PRECIPITATION
+
+
+def is_fog(canonical: int) -> bool:
+    return canonical in _FOG
+
+
+def is_haze(canonical: int) -> bool:
+    return canonical in _HAZE
+
+
+def is_dust(canonical: int) -> bool:
+    return canonical in _DUST
+
+
+def outdoor_sentence(canonical: int) -> str:
+    """「室外状态」提醒文案。
+
+    到点后用当前天气匹配一句提示；未知编号返回空串，调用方据此跳过提醒。
+    """
+    if canonical == 0:
+        return "阳光明媚，宜出门走走。"
+    if canonical == 1:
+        return "云影徘徊，出门无妨。"
+    if canonical == 2:
+        return "云层低垂，心情勿沉。"
+    if canonical == 3:
+        return "阵雨忽至，伞在身边。"
+    if canonical == 4:
+        return "雷声隐隐，避雨檐下。"
+    if canonical == 5:
+        return "冰雹骤落，暂避室内。"
+    if canonical == 6:
+        return "雨雪相杂，备好伞衣。"
+    if canonical in (7, 21):
+        return "细雨如丝，出门带伞。"
+    if canonical in (8, 22):
+        return "雨势渐密，行路慢些。"
+    if canonical in (9, 10, 11, 12, 23, 24, 25):
+        return "大雨滂沱，暂缓远行。"
+    if canonical in (17, 28):
+        return "风雪交加，不宜出门。"
+    if canonical in _SNOW:
+        return "雪花纷飞，添衣保暖。"
+    if canonical in _FOG:
+        return "雾气氤氲，缓步慢行。"
+    if canonical == 19:
+        return "冻雨路滑，缓步慢行。"
+    if canonical in _DUST:
+        return "沙尘漫卷，护好口鼻。"
+    if canonical == 32:
+        return "风势正紧，帽要戴稳。"
+    if canonical == 33:
+        return "风势极盛，速避安全处。"
+    if canonical in _HAZE:
+        return "霾色沉沉，口罩护身。"
+    return ""
+
+
 def glow_for(canonical: int, night: bool = False) -> tuple[str, float]:
     """主体屏幕的顶部光晕颜色。"""
     if canonical == UNKNOWN:

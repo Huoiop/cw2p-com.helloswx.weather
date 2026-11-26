@@ -5,7 +5,14 @@ from typing import Any
 from .. import codes
 from ..alerts import build_alert
 from ..http import RequestError, get_json
-from ..models import COORDINATES, HourlyEntry, Location, MinutelySeries, Snapshot
+from ..models import (
+    COORDINATES,
+    DailyEntry,
+    HourlyEntry,
+    Location,
+    MinutelySeries,
+    Snapshot,
+)
 from .base import ProviderError, WeatherProvider, register
 
 _HOST = "https://devapi.qweather.com"
@@ -43,7 +50,7 @@ class QWeatherProvider(WeatherProvider):
             night=self.is_night(),
         )
 
-        self._apply_daily(snapshot, target)
+        self._apply_daily(snapshot, target, table)
         snapshot.hourly = self._fetch_hourly(target, table, snapshot.night)
         snapshot.minutely = self._fetch_minutely(location)
         snapshot.alerts = self._fetch_alerts(target)
@@ -70,7 +77,9 @@ class QWeatherProvider(WeatherProvider):
             raise ProviderError(f"和风天气返回 {status or '未知错误'}")
         return payload
 
-    def _apply_daily(self, snapshot: Snapshot, target: str) -> None:
+    def _apply_daily(
+        self, snapshot: Snapshot, target: str, table: codes.StatusTable
+    ) -> None:
         try:
             payload = self._request("/v7/weather/3d", target)
         except ProviderError:
@@ -81,6 +90,14 @@ class QWeatherProvider(WeatherProvider):
         today = daily[0]
         snapshot.temp_high = self.to_float(today.get("tempMax"))
         snapshot.temp_low = self.to_float(today.get("tempMin"))
+        if len(daily) > 1:
+            tomorrow = daily[1]
+            snapshot.tomorrow = DailyEntry(
+                canonical=table.canonical(tomorrow.get("iconDay")),
+                description=str(tomorrow.get("textDay") or ""),
+                temp_high=self.to_float(tomorrow.get("tempMax")),
+                temp_low=self.to_float(tomorrow.get("tempMin")),
+            )
 
     def _fetch_hourly(
         self, target: str, table: codes.StatusTable, night: bool

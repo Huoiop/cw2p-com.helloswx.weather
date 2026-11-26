@@ -52,6 +52,11 @@ WIDGET_DEFAULTS = {
     "main_seconds": 12,
     # 降水预报 / 天气预警屏幕停留时长
     "detail_seconds": 6,
+    # 到点提醒：室外状态 / 明日天气。值为每日 HH:MM 时刻数组；
+    # 空数组表示关闭。提醒时长由 notice_seconds 控制（默认 30 秒）。
+    "outdoor_notice_times": [],
+    "tomorrow_notice_times": [],
+    "notice_seconds": 30,
 }
 
 #: 设置页城市查询结果的缓存上限（条目）

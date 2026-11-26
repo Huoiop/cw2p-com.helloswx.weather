@@ -4,7 +4,7 @@ from typing import Any
 
 from .. import codes
 from ..http import RequestError, get_json
-from ..models import Location, Snapshot
+from ..models import DailyEntry, Location, Snapshot
 from .base import ProviderError, WeatherProvider, register
 
 _ENDPOINT = (
@@ -47,7 +47,7 @@ class QQProvider(WeatherProvider):
             city=location.label,
             night=self.is_night(),
         )
-        self._apply_forecast(snapshot, location.code)
+        self._apply_forecast(snapshot, location.code, table)
         return snapshot
 
     def _request(self, adcode: str, kind: str) -> dict[str, Any]:
@@ -61,8 +61,10 @@ class QQProvider(WeatherProvider):
             raise ProviderError(str(payload.get("message") or "腾讯天气请求失败"))
         return payload
 
-    def _apply_forecast(self, snapshot: Snapshot, adcode: str) -> None:
-        """腾讯只有逐日预报，这里仅取当天最高 / 最低温。
+    def _apply_forecast(
+        self, snapshot: Snapshot, adcode: str, table: codes.StatusTable
+    ) -> None:
+        """腾讯只有逐日预报，这里取今天与明天的最高 / 最低温和天气。
 
         没有逐小时数据，因此该源不提供降水预报屏幕。
         """
@@ -83,3 +85,12 @@ class QQProvider(WeatherProvider):
         today = infos[0]
         snapshot.temp_high = self.to_float(today.get("max_degree"))
         snapshot.temp_low = self.to_float(today.get("min_degree"))
+        if len(infos) > 1:
+            tomorrow = infos[1]
+            description = str(tomorrow.get("weather") or "")
+            snapshot.tomorrow = DailyEntry(
+                canonical=table.canonical_from_text(description),
+                description=description,
+                temp_high=self.to_float(tomorrow.get("max_degree")),
+                temp_low=self.to_float(tomorrow.get("min_degree")),
+            )

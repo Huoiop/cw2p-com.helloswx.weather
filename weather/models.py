@@ -56,6 +56,16 @@ class MinutelySeries:
 
 
 @dataclass
+class DailyEntry:
+    """逐日预报的一项（目前用于「明日天气」提醒）。"""
+
+    canonical: int = 99
+    description: str = ""
+    temp_high: float | None = None
+    temp_low: float | None = None
+
+
+@dataclass
 class Snapshot:
     """一次抓取得到的全部天气信息。"""
 
@@ -69,3 +79,4 @@ class Snapshot:
     hourly: list[HourlyEntry] = field(default_factory=list)
     minutely: MinutelySeries | None = None
     alerts: list[dict[str, Any]] = field(default_factory=list)
+    tomorrow: DailyEntry | None = None

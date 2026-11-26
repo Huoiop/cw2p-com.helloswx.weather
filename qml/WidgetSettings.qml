@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import RinUI
 import ClassWidgets.Plugins
+import "components"
 
 SettingsLayout {
     id: layout
@@ -12,8 +13,87 @@ SettingsLayout {
     // the standard CW2 Configs context instead.
     property var backend: null
     ListModel { id: cityModel }
+    ListModel { id: outdoorTimesModel }
+    ListModel { id: tomorrowTimesModel }
 
-    Component.onCompleted: reloadCities()
+    Component.onCompleted: {
+        reloadCities()
+        loadNoticeTimes(outdoorTimesModel, "outdoor_notice_times")
+        loadNoticeTimes(tomorrowTimesModel, "tomorrow_notice_times")
+    }
+
+    // 对话框通过 Loader.setSource 注入 settings，个别时序下可能晚于
+    // Component.onCompleted；这里再兜底加载一次。
+    onSettingsChanged: {
+        loadNoticeTimes(outdoorTimesModel, "outdoor_notice_times")
+        loadNoticeTimes(tomorrowTimesModel, "tomorrow_notice_times")
+    }
+
+    /*! 兼容旧配置里的逗号分隔字符串，统一成去重、排序后的 HH:MM 数组。 */
+    function normalizeNoticeTimes(raw) {
+        var result = []
+        if (!raw)
+            return result
+        var items = typeof raw === "string"
+                ? String(raw).split(/[,，、;；\s]+/)
+                : raw
+        if (typeof items.length === "undefined")
+            return result
+        for (var i = 0; i < items.length; i++) {
+            var text = String(items[i]).trim().replace(/：/g, ":")
+            var match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(text)
+            if (!match)
+                continue
+            var hour = match[1].length < 2 ? "0" + match[1] : match[1]
+            var value = hour + ":" + match[2]
+            if (result.indexOf(value) < 0)
+                result.push(value)
+        }
+        result.sort()
+        return result
+    }
+
+    function loadNoticeTimes(model, key) {
+        model.clear()
+        var values = normalizeNoticeTimes(settings ? settings[key] : null)
+        for (var i = 0; i < values.length; i++)
+            model.append({"time": values[i]})
+    }
+
+    function noticeTimesFromModel(model) {
+        var values = []
+        for (var i = 0; i < model.count; i++)
+            values.push(model.get(i).time)
+        values.sort()
+        return values
+    }
+
+    function commitNoticeTimes(model, key) {
+        if (settings)
+            settings[key] = noticeTimesFromModel(model)
+    }
+
+    function addNoticeTime(model, key, value) {
+        var picked = normalizeNoticeTimes([value])
+        if (picked.length === 0)
+            return
+        var values = noticeTimesFromModel(model)
+        if (values.indexOf(picked[0]) >= 0)
+            return
+        values.push(picked[0])
+        values.sort()
+        model.clear()
+        for (var i = 0; i < values.length; i++)
+            model.append({"time": values[i]})
+        commitNoticeTimes(model, key)
+    }
+
+    function removeNoticeTime(model, key, index) {
+        if (index < 0 || index >= model.count)
+            return
+        model.remove(index)
+        commitNoticeTimes(model, key)
+    }
 
     function reloadCities() {
         cityModel.clear()
@@ -137,6 +217,57 @@ SettingsLayout {
             stepSize: 1
             onValueModified: settings.detail_seconds = value
             Component.onCompleted: value = settings.detail_seconds || 6
+        }
+    }
+
+    SettingCard {
+        Layout.fillWidth: true
+        icon.name: "ic_fluent_weather_sunny_20_regular"
+        title: qsTr("室外状态提醒")
+        description: qsTr("选择时间后点「添加」，可添加多个；到点显示当前天气")
+
+        NoticeTimesEditor {
+            objectName: "outdoorTimesEditor"
+            Layout.preferredWidth: 236
+            Layout.maximumWidth: 236
+            defaultTime: "07:30"
+            timesModel: outdoorTimesModel
+            onTimeAdded: function(value) { layout.addNoticeTime(outdoorTimesModel, "outdoor_notice_times", value) }
+            onTimeRemoved: function(index) { layout.removeNoticeTime(outdoorTimesModel, "outdoor_notice_times", index) }
+        }
+    }
+
+    SettingCard {
+        Layout.fillWidth: true
+        icon.name: "ic_fluent_calendar_20_regular"
+        title: qsTr("明日天气提醒")
+        description: qsTr("选择时间后点「添加」，可添加多个；到点显示明日天气、气温变化与是否降水")
+
+        NoticeTimesEditor {
+            objectName: "tomorrowTimesEditor"
+            Layout.preferredWidth: 236
+            Layout.maximumWidth: 236
+            defaultTime: "20:00"
+            timesModel: tomorrowTimesModel
+            onTimeAdded: function(value) { layout.addNoticeTime(tomorrowTimesModel, "tomorrow_notice_times", value) }
+            onTimeRemoved: function(index) { layout.removeNoticeTime(tomorrowTimesModel, "tomorrow_notice_times", index) }
+        }
+    }
+
+    SettingCard {
+        Layout.fillWidth: true
+        icon.name: "ic_fluent_timer_20_regular"
+        title: qsTr("提醒显示时长")
+        description: qsTr("每条到点提醒持续显示的秒数，默认 30 秒")
+
+        SpinBox {
+            objectName: "noticeSecondsBox"
+            Layout.preferredWidth: 150
+            from: 5
+            to: 120
+            stepSize: 5
+            onValueModified: settings.notice_seconds = value
+            Component.onCompleted: value = settings.notice_seconds || 30
         }
     }
 }
