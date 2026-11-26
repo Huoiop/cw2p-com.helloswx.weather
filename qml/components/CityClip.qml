@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import RinUI
 
-Clip {
+Card {
     id: root
 
     property var city: ({})

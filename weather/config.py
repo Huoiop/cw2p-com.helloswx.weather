@@ -15,7 +15,7 @@ class WeatherConfig(ConfigBaseModel):
     location_mode: str = "city"
     #: 城市代码（城市模式）
     city_code: str = ""
-    #: 城市名称（坐标模式下保存逆地理编码得到的名称）
+    #: 城市名称（坐标模式下保存自定义名称，未填时保存原始经纬度）
     city_name: str = ""
     #: 经纬度（坐标模式，或由在线搜索得到的城市坐标）
     latitude: float | None = None

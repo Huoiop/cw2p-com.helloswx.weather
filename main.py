@@ -114,6 +114,18 @@ def _coordinates_of(city: dict[str, Any]) -> tuple[float | None, float | None]:
     return latitude, longitude
 
 
+def _coordinate_label(latitude: float, longitude: float) -> str:
+    """未填名称时的显示名：保留用户输入的经纬度（最多 6 位小数并去掉尾零）。"""
+
+    def _format(value: float) -> str:
+        if value == 0:  # 避免 -0.0 显示成 "-0"
+            value = 0.0
+        text = f"{value:.6f}".rstrip("0").rstrip(".")
+        return text or "0"
+
+    return f"{_format(latitude)}, {_format(longitude)}"
+
+
 class _Job(QThread):
     """跑一次同步调用，结果通过 :attr:`finishedWith` 回到 GUI 线程。"""
 
@@ -679,31 +691,9 @@ class Plugin(CW2Plugin):
             and latitude is not None
             and longitude is not None
         ):
-            # 逆地理编码要走网络，放后台线程：主线程最多等它几百毫秒就会卡住
-            # CW 的动画，也让「添加城市」按钮看起来像没反应。
-            self._tasks.submit(
-                f"geocode:{latitude:.4f},{longitude:.4f}",
-                geolocate.city_name_at,
-                self._apply_geocoded_city,
-                latitude,
-                longitude,
-                5.0,
-                dict(city),
-            )
-            return
+            # 不填名称就原样显示经纬度，不做逆地理编码
+            city = city | {"name": _coordinate_label(latitude, longitude)}
         self._commit_city(city)
-
-    def _apply_geocoded_city(
-        self,
-        result: Any,
-        latitude: float,
-        longitude: float,
-        _timeout: float,
-        city: dict[str, Any],
-    ) -> None:
-        """逆地理编码结束后回到 GUI 线程，把真名补上。"""
-        name = str(result or "").strip()
-        self._commit_city(city | {"name": name or f"{latitude:.2f}, {longitude:.2f}"})
 
     def _commit_city(self, city: dict[str, Any]) -> None:
         """把一条城市记录合并进配置并刷新天气（只在 GUI 线程执行）。"""
@@ -789,7 +779,7 @@ class Plugin(CW2Plugin):
 
     @Slot(float, float, str)
     def setCoordinates(self, latitude: float, longitude: float, name: str) -> None:
-        """设置坐标位置；如果 name 为空，会在后台做逆地理编码。"""
+        """设置坐标位置；name 为空时用经纬度作为显示名。"""
         self.addCityRecord(
             {
                 "name": name or "",
@@ -916,9 +906,16 @@ class Plugin(CW2Plugin):
         self.locatingChanged.emit()
         self._tasks.submit("locate", _locate, self._apply_location, provider_id)
 
-    def _apply_location(self, resolved: Any) -> None:
-        """定位任务回到 GUI 线程后落配置。"""
+    def _apply_location(self, resolved: Any, provider_id: str) -> None:
+        """定位任务回到 GUI 线程后落配置。
+
+        ``submit`` 会把工作线程的参数原样回传给回调，所以这里也要接收
+        ``provider_id``；定位期间如果切换了数据源，旧数据源解析出的城市不能再落库。
+        """
         self._locating = False
+        if provider_id != self.config.provider:
+            self.locatingChanged.emit()
+            return
         with self._config_batch():
             self.config.located_once = True
         if resolved:

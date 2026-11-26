@@ -73,6 +73,7 @@ Dialog {
         searchBox.text = ""
         latitudeInput.text = info?.latitude ? String(info.latitude) : ""
         longitudeInput.text = info?.longitude ? String(info.longitude) : ""
+        nameInput.text = ""
     }
 
     /*! 后端命中缓存时会同步返回，命中就不用等后台线程 */
@@ -313,6 +314,24 @@ Dialog {
                 text: qsTr("纬度范围 -90 ~ 90，经度范围 -180 ~ 180。可在地图应用中长按获取坐标。")
             }
 
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Text {
+                    text: qsTr("显示名称（可选）")
+                    typography: Typography.Body
+                }
+
+                TextField {
+                    id: nameInput
+                    objectName: "coordinateNameInput"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("留空则显示经纬度，例如：家 / 学校 / 公司")
+                    maximumLength: 32
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 16
@@ -328,6 +347,7 @@ Dialog {
 
                     TextField {
                         id: latitudeInput
+                        objectName: "coordinateLatitudeInput"
                         Layout.fillWidth: true
                         placeholderText: "39.9042"
                         validator: DoubleValidator {
@@ -350,6 +370,7 @@ Dialog {
 
                     TextField {
                         id: longitudeInput
+                        objectName: "coordinateLongitudeInput"
                         Layout.fillWidth: true
                         placeholderText: "116.4074"
                         validator: DoubleValidator {
@@ -382,9 +403,10 @@ Dialog {
             if (root.useCoordinateInput) {
                 const lat = parseFloat(latitudeInput.text)
                 const lon = parseFloat(longitudeInput.text)
-                // 名字留空，后端会在后台做逆地理编码再补上
+                // 自定义名称留空时，后端直接用原始经纬度作为显示名
+                const customName = nameInput.text.trim()
                 backend.addCityRecord({
-                    "name": "",
+                    "name": customName,
                     "mode": "coordinates",
                     "latitude": lat,
                     "longitude": lon
